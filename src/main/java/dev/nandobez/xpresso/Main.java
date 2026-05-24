@@ -16,7 +16,9 @@ import static dev.nandobez.xpresso.cmd.Tui.*;
         RoutesCmd.class, ServerCmd.class, ConsoleCmd.class,
         TestCmd.class, BuildCmd.class,
         CleanCmd.class, CompileCmd.class, InstallCmd.class,
-        DoctorCmd.class, DepsCmd.class
+        DoctorCmd.class, DepsCmd.class,
+        HealthCmd.class, BeansCmd.class, ProfileCmd.class,
+        ConfigCmd.class, WatchCmd.class
     }
 )
 public class Main implements Runnable {
@@ -53,6 +55,11 @@ public class Main implements Runnable {
         System.out.println("    " + BLD + "install" + R + "             full pipeline: clean + install + macc install");
         System.out.println("    " + BLD + "test, t" + R + "             test suite (optional pattern)");
         System.out.println("    " + BLD + "routes" + R + "              list endpoints from @RestController");
+        System.out.println("    " + BLD + "beans" + R + "               list Spring beans (@Service / @Repository / …)");
+        System.out.println("    " + BLD + "config" + R + "              list @ConfigurationProperties + active values");
+        System.out.println("    " + BLD + "health" + R + "              curl /actuator/health");
+        System.out.println("    " + BLD + "watch" + R + "               re-compile on every .java change (DevTools-friendly)");
+        System.out.println("    " + BLD + "profile add|list|rm" + R + " application-<name>.yml management");
         System.out.println();
         System.out.println();
         System.out.println("  " + DIM + "GENERATE" + R);
@@ -69,14 +76,19 @@ public class Main implements Runnable {
         System.out.println("    " + BLD + "g config <Name>" + R + "             @Configuration skeleton");
         System.out.println("    " + BLD + "g component <Name>" + R + "          @Component skeleton");
         System.out.println("    " + BLD + "g test <Subject>" + R + "            JUnit5 test class");
+        System.out.println("    " + BLD + "g endpoint <ctrl> --method --path" + R + "  add method to existing controller");
+        System.out.println();
+        System.out.println("    " + DIM + "field flags:  !unique  !notblank  !email  !positive  !future  …  {255} for length" + R);
+        System.out.println("    " + DIM + "relations:    user:belongs_to  comments:has_many  profile:has_one  role:enum(USER,ADMIN)" + R);
         System.out.println();
         System.out.println();
         System.out.println("  " + DIM + "DATABASE" + R);
         System.out.println();
-        System.out.println("    " + BLD + "db migrate" + R + "          run Flyway migrate");
+        System.out.println("    " + BLD + "db migrate [--to V…]" + R + " run Flyway migrate (optional target)");
+        System.out.println("    " + BLD + "db status, info" + R + "     Flyway state");
         System.out.println("    " + BLD + "db rollback" + R + "         Flyway undo");
-        System.out.println("    " + BLD + "db info" + R + "             Flyway info");
         System.out.println("    " + BLD + "db clean" + R + "            Flyway clean (destructive)");
+        System.out.println("    " + BLD + "db repair" + R + "           Flyway repair");
         System.out.println();
         System.out.println();
         System.out.println("  " + DIM + "INTEGRATIONS" + R);
