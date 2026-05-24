@@ -286,6 +286,41 @@ public class Templates {
             """.formatted(groupId, artifactId);
     }
 
+    public static String newGradle(String groupId, String artifactId, String javaVersion) {
+        return """
+            plugins {
+                java
+                id("org.springframework.boot") version "3.3.4"
+                id("io.spring.dependency-management") version "1.1.6"
+                id("org.flywaydb.flyway") version "10.17.0"
+            }
+
+            group = "%s"
+            version = "0.1.0-SNAPSHOT"
+
+            java {
+                toolchain { languageVersion.set(JavaLanguageVersion.of(%s)) }
+            }
+
+            repositories { mavenCentral() }
+
+            dependencies {
+                implementation("org.springframework.boot:spring-boot-starter-web")
+                implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+                implementation("org.springframework.boot:spring-boot-starter-validation")
+                implementation("org.springframework.boot:spring-boot-starter-actuator")
+                developmentOnly("org.springframework.boot:spring-boot-devtools")
+                implementation("org.flywaydb:flyway-core")
+                implementation("org.flywaydb:flyway-database-postgresql")
+                runtimeOnly("org.postgresql:postgresql")
+                runtimeOnly("com.h2database:h2")
+                testImplementation("org.springframework.boot:spring-boot-starter-test")
+            }
+
+            tasks.named<Test>("test") { useJUnitPlatform() }
+            """.formatted(groupId, javaVersion);
+    }
+
     public static String application(String pkg, String className) {
         return """
             package %s;

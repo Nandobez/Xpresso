@@ -22,15 +22,23 @@ public class NewCmd implements Callable<Integer> {
     @Option(names = "--db", defaultValue = "h2", description = "Database driver: h2 | postgres | mysql.")
     String db;
 
+    @Option(names = "--gradle", description = "Use Gradle (Kotlin DSL) instead of Maven.")
+    boolean useGradle;
+
     public Integer call() throws Exception {
         Path root = Paths.get(name);
         if (Files.exists(root)) { error("directory '" + name + "' already exists."); return 2; }
         String basePackage = groupId + "." + name.replaceAll("[^a-zA-Z0-9]", "");
         String appClass = capitalize(name) + "Application";
 
-        banner("xpresso new " + name, basePackage);
+        banner("xpresso new " + name, basePackage + (useGradle ? " · gradle" : " · maven"));
 
-        write(root.resolve("pom.xml"), Templates.newPom(groupId, name));
+        if (useGradle) {
+            write(root.resolve("build.gradle.kts"), Templates.newGradle(groupId, name, javaVersion));
+            write(root.resolve("settings.gradle.kts"), "rootProject.name = \"" + name + "\"\n");
+        } else {
+            write(root.resolve("pom.xml"), Templates.newPom(groupId, name));
+        }
 
         Path pkgDir = root.resolve("src/main/java/" + basePackage.replace('.', '/'));
         write(pkgDir.resolve(appClass + ".java"), Templates.application(basePackage, appClass));

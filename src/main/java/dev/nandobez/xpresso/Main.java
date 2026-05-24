@@ -14,7 +14,9 @@ import static dev.nandobez.xpresso.cmd.Tui.*;
     subcommands = {
         NewCmd.class, GenerateCmd.class, DbCmd.class,
         RoutesCmd.class, ServerCmd.class, ConsoleCmd.class,
-        TestCmd.class, BuildCmd.class
+        TestCmd.class, BuildCmd.class,
+        CleanCmd.class, CompileCmd.class, InstallCmd.class,
+        DoctorCmd.class, DepsCmd.class
     }
 )
 public class Main implements Runnable {
@@ -32,8 +34,8 @@ public class Main implements Runnable {
     private static void printHelp() {
         System.out.println();
         System.out.println();
-        System.out.println(BLD + "xpresso " + R + DIM + "0.1.0" + R + " — Spring Boot scaffolder");
-        System.out.println(DIM + "  Conventions over configuration. Rails for the JVM." + R);
+        System.out.println(BLD + "xpresso " + R + DIM + "0.1.0" + R + " — Spring Boot scaffolder & lifecycle");
+        System.out.println(DIM + "  Maven + Gradle. Plays well with " + R + BLD + "jdp" + R + DIM + " (deps) + " + R + BLD + "macc" + R + DIM + " (frontend)." + R);
         System.out.println();
         System.out.println("  " + DIM + "USAGE" + R);
         System.out.println();
@@ -42,11 +44,14 @@ public class Main implements Runnable {
         System.out.println();
         System.out.println("  " + DIM + "PROJECT" + R);
         System.out.println();
-        System.out.println("    " + BLD + "new <name>" + R + "          scaffold a new Spring Boot project");
-        System.out.println("    " + BLD + "server, s" + R + "           run with spring-boot:run + devtools");
+        System.out.println("    " + BLD + "new <name>" + R + "          scaffold (use --gradle for Kotlin DSL)");
+        System.out.println("    " + BLD + "server, s" + R + "           spring-boot:run / bootRun (auto-builds frontend)");
         System.out.println("    " + BLD + "console, c" + R + "          jshell + project classpath");
-        System.out.println("    " + BLD + "build" + R + "               mvn clean package (skip tests)");
-        System.out.println("    " + BLD + "test, t" + R + "             mvn test (optional pattern)");
+        System.out.println("    " + BLD + "clean" + R + "               mvn clean / gradle clean (--deep also wipes node_modules)");
+        System.out.println("    " + BLD + "compile" + R + "             mvn -q compile (+ macc codegen if frontend)");
+        System.out.println("    " + BLD + "build" + R + "               clean + package (skip tests by default)");
+        System.out.println("    " + BLD + "install" + R + "             full pipeline: clean + install + macc install");
+        System.out.println("    " + BLD + "test, t" + R + "             test suite (optional pattern)");
         System.out.println("    " + BLD + "routes" + R + "              list endpoints from @RestController");
         System.out.println();
         System.out.println();
@@ -72,6 +77,12 @@ public class Main implements Runnable {
         System.out.println("    " + BLD + "db rollback" + R + "         Flyway undo");
         System.out.println("    " + BLD + "db info" + R + "             Flyway info");
         System.out.println("    " + BLD + "db clean" + R + "            Flyway clean (destructive)");
+        System.out.println();
+        System.out.println();
+        System.out.println("  " + DIM + "INTEGRATIONS" + R);
+        System.out.println();
+        System.out.println("    " + BLD + "doctor" + R + "              delegate to " + DIM + "jdp doctor" + R + " (CVE + outdated + score)");
+        System.out.println("    " + BLD + "deps" + R + "                delegate to " + DIM + "jdp list" + R);
         System.out.println();
         System.out.println();
         System.out.println("  " + DIM + "FIELD TYPES" + R);
