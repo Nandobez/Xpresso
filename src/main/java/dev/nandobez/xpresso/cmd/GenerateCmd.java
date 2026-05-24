@@ -22,8 +22,17 @@ public class GenerateCmd implements Callable<Integer> {
     @Parameters(index = "1", arity = "0..1", description = "Name (e.g. User, posts, AddIndexToUsers). Optional for 'auth'.")
     String name;
 
-    @Parameters(index = "2..*", arity = "0..*", description = "For model/resource: fields like name:string email:string.")
+    @Parameters(index = "2..*", arity = "0..*", description = "For model/resource: fields like name:string email:string!unique!email user:belongs_to.")
     List<String> fields;
+
+    @Option(names = "--method", defaultValue = "GET", description = "For endpoint: HTTP verb.")
+    String httpMethod;
+
+    @Option(names = "--path", defaultValue = "", description = "For endpoint: URL path suffix.")
+    String urlPath;
+
+    @Option(names = "--tdd", description = "Also generate a JUnit5 test class.")
+    boolean tdd;
 
     public Integer call() throws Exception {
         var p = ProjectLayout.detect(Paths.get("."));
@@ -31,20 +40,26 @@ public class GenerateCmd implements Callable<Integer> {
             error("missing <name>. Try: xpresso g " + kind + " <Name>");
             return 2;
         }
-        var fs = parseFields();
+        // Skip field parsing for kinds that don't take name:type fields.
+        boolean wantsFields = switch (kind.toLowerCase()) {
+            case "model", "resource" -> true;
+            default -> false;
+        };
+        var fs = wantsFields ? parseFields() : java.util.List.<dev.nandobez.xpresso.core.FieldSpec>of();
         String entity = name == null ? "" : capitalize(name);
 
         banner("xpresso g " + kind, name == null ? "" : name);
 
         switch (kind.toLowerCase()) {
-            case "model"      -> genModel(p, entity, fs, /*migration*/ true);
-            case "controller" -> genController(p, entity);
-            case "service"    -> genService(p, entity);
+            case "model"      -> { genModel(p, entity, fs, /*migration*/ true); if (tdd) genTest(p, entity); }
+            case "controller" -> { genController(p, entity);                    if (tdd) genTest(p, entity + "Controller"); }
+            case "service"    -> { genService(p, entity);                       if (tdd) genTest(p, entity + "Service"); }
             case "migration"  -> genMigration(p, name);
             case "resource"   -> {
                 genModel(p, entity, fs, true);
                 genService(p, entity);
                 genController(p, entity);
+                if (tdd) { genTest(p, entity); genTest(p, entity + "Service"); genTest(p, entity + "Controller"); }
             }
             case "auth"       -> genAuth(p);
             case "job"        -> write(p.packageDir("job").resolve((name.endsWith("Job") ? name : name + "Job") + ".java"),
@@ -76,6 +91,10 @@ public class GenerateCmd implements Callable<Integer> {
                 write(testDir.resolve(entity + "Test.java"),
                       ExtraTemplates.testClass(p.basePackage, entity));
             }
+            case "endpoint"   -> {
+                String action = (fields != null && !fields.isEmpty()) ? fields.get(0) : httpMethod.toLowerCase();
+                genEndpoint(p, name, action, httpMethod, urlPath);
+            }
             default -> { error("unknown kind '" + kind + "'. use: model | controller | service | migration | resource | auth | job | event | exception | config | component | test"); return 2; }
         }
         return 0;
@@ -104,11 +123,68 @@ public class GenerateCmd implements Callable<Integer> {
     static void genController(ProjectLayout p, String name) throws Exception {
         write(p.packageDir("web").resolve(name + "Controller.java"),
             Templates.controller(p.basePackage, name));
+        hintMissingDeps(p);
     }
 
     static void genService(ProjectLayout p, String name) throws Exception {
         write(p.packageDir("service").resolve(name + "Service.java"),
             Templates.service(p.basePackage, name));
+    }
+
+    static void genTest(ProjectLayout p, String subject) throws Exception {
+        Path testDir = p.root.resolve("src/test/java/" + p.basePackage.replace('.', '/'));
+        Files.createDirectories(testDir);
+        Path out = testDir.resolve(subject + "Test.java");
+        if (Files.exists(out)) { updated(out.toString()); return; }
+        Files.writeString(out, ExtraTemplates.testClass(p.basePackage, subject));
+        created(out.toString());
+    }
+
+    /** Detect missing validation / openapi deps via jdp doctor result; print hint only. */
+    static void hintMissingDeps(ProjectLayout p) {
+        try {
+            Path pom = p.root.resolve("pom.xml");
+            if (!Files.exists(pom)) return;
+            String body = Files.readString(pom);
+            if (!body.contains("starter-validation"))
+                info("hint: run " + BLD + "xpresso deps" + R + " — `starter-validation` is recommended for @Valid");
+            if (!body.contains("springdoc"))
+                info("hint: run " + BLD + "jdp add springdoc-openapi-starter-webmvc-ui" + R + " for Swagger UI");
+        } catch (Exception ignored) {}
+    }
+
+    static void genEndpoint(ProjectLayout p, String controllerHint, String action, String method, String path) throws Exception {
+        String want = capitalize(controllerHint) + "Controller";
+        Path target = null;
+        try (var s = Files.walk(p.javaRoot)) {
+            for (Path c : (Iterable<Path>) s.filter(x -> x.toString().endsWith(want + ".java"))::iterator) {
+                target = c; break;
+            }
+        }
+        if (target == null) { error("controller not found: " + want + ".java"); return; }
+        String body = Files.readString(target);
+        int closeBrace = body.lastIndexOf('}');
+        if (closeBrace < 0) { error("malformed controller"); return; }
+
+        String mapping = Templates.capitalize(method.toLowerCase()) + "Mapping" +
+            (path.isBlank() ? "" : "(\"" + path + "\")");
+        String pathParams = "";
+        for (var m = java.util.regex.Pattern.compile("\\{(\\w+)\\}").matcher(path); m.find();) {
+            pathParams += (pathParams.isEmpty() ? "" : ", ") + "@PathVariable Long " + m.group(1);
+        }
+
+        String snippet = """
+
+                @%s
+                public org.springframework.http.ResponseEntity<?> %s(%s) {
+                    // TODO implement
+                    return org.springframework.http.ResponseEntity.ok().build();
+                }
+            """.formatted(mapping, action, pathParams);
+
+        String newBody = body.substring(0, closeBrace) + snippet + body.substring(closeBrace);
+        Files.writeString(target, newBody);
+        updated(target.toString());
     }
 
     static void genAuth(ProjectLayout p) throws Exception {

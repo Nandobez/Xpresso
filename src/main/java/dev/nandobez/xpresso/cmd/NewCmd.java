@@ -25,6 +25,16 @@ public class NewCmd implements Callable<Integer> {
     @Option(names = "--gradle", description = "Use Gradle (Kotlin DSL) instead of Maven.")
     boolean useGradle;
 
+    @Option(names = "--template", defaultValue = "rest-api",
+        description = "Template: rest-api | graphql | webflux | kafka-consumer | batch | lib")
+    String template;
+
+    @Option(names = "--spring", defaultValue = "3.3.4", description = "Spring Boot version to pin.")
+    String springVersion;
+
+    @Option(names = "--kotlin", description = "Use Kotlin instead of Java for the application class.")
+    boolean useKotlin;
+
     public Integer call() throws Exception {
         Path root = Paths.get(name);
         if (Files.exists(root)) { error("directory '" + name + "' already exists."); return 2; }
@@ -36,12 +46,30 @@ public class NewCmd implements Callable<Integer> {
         if (useGradle) {
             write(root.resolve("build.gradle.kts"), Templates.newGradle(groupId, name, javaVersion));
             write(root.resolve("settings.gradle.kts"), "rootProject.name = \"" + name + "\"\n");
+        } else if (useKotlin) {
+            write(root.resolve("pom.xml"), Templates.newKotlinPom(groupId, name, springVersion));
         } else {
-            write(root.resolve("pom.xml"), Templates.newPom(groupId, name));
+            write(root.resolve("pom.xml"), Templates.newPom(groupId, name, springVersion, template));
         }
 
-        Path pkgDir = root.resolve("src/main/java/" + basePackage.replace('.', '/'));
-        write(pkgDir.resolve(appClass + ".java"), Templates.application(basePackage, appClass));
+        String srcLang = useKotlin ? "kotlin" : "java";
+        Path pkgDir = root.resolve("src/main/" + srcLang + "/" + basePackage.replace('.', '/'));
+        if (useKotlin) {
+            write(pkgDir.resolve(appClass + ".kt"),
+                """
+                package %s
+
+                import org.springframework.boot.autoconfigure.SpringBootApplication
+                import org.springframework.boot.runApplication
+
+                @SpringBootApplication
+                class %s
+
+                fun main(args: Array<String>) { runApplication<%s>(*args) }
+                """.formatted(basePackage, appClass, appClass));
+        } else {
+            write(pkgDir.resolve(appClass + ".java"), Templates.application(basePackage, appClass));
+        }
 
         // Convention dirs
         for (String sub : new String[]{"domain", "repository", "service", "web", "dto", "config"}) {
