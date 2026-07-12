@@ -230,10 +230,14 @@ public class ExtraTemplates {
 
                 @PostMapping("/login")
                 public ResponseEntity<Map<String, String>> login(@RequestBody Map<String, String> body) {
-                    return repo.findByEmail(body.get("email"))
+                    boolean valid = repo.findByEmail(body.get("email"))
                         .filter(u -> encoder.matches(body.get("password"), u.getPasswordHash()))
-                        .map(u -> ResponseEntity.ok(Map.of("token", "TODO: issue JWT for " + u.getEmail())))
-                        .orElseGet(() -> ResponseEntity.status(401).body(Map.of("error", "bad credentials")));
+                        .isPresent();
+                    if (!valid) return ResponseEntity.status(401).body(Map.of("error", "bad credentials"));
+                    // SECURITY: token issuance is not implemented. Wire a real JWT provider
+                    // before enabling login. Never ship a placeholder token as if it were valid.
+                    return ResponseEntity.status(501).body(Map.of(
+                        "error", "token issuance not implemented — integrate a JWT provider (e.g. jjwt / spring-security-oauth2)"));
                 }
             }
             """.formatted(pkg, pkg, pkg);

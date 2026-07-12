@@ -52,13 +52,13 @@ public class GenerateCmd implements Callable<Integer> {
 
         switch (kind.toLowerCase()) {
             case "model"      -> { genModel(p, entity, fs, /*migration*/ true); if (tdd) genTest(p, entity); }
-            case "controller" -> { genController(p, entity);                    if (tdd) genTest(p, entity + "Controller"); }
+            case "controller" -> { genController(p, entity, fs);                if (tdd) genTest(p, entity + "Controller"); }
             case "service"    -> { genService(p, entity);                       if (tdd) genTest(p, entity + "Service"); }
             case "migration"  -> genMigration(p, name);
             case "resource"   -> {
                 genModel(p, entity, fs, true);
                 genService(p, entity);
-                genController(p, entity);
+                genController(p, entity, fs);
                 if (tdd) { genTest(p, entity); genTest(p, entity + "Service"); genTest(p, entity + "Controller"); }
             }
             case "auth"       -> genAuth(p);
@@ -120,9 +120,9 @@ public class GenerateCmd implements Callable<Integer> {
         }
     }
 
-    static void genController(ProjectLayout p, String name) throws Exception {
+    static void genController(ProjectLayout p, String name, List<FieldSpec> fs) throws Exception {
         write(p.packageDir("web").resolve(name + "Controller.java"),
-            Templates.controller(p.basePackage, name));
+            Templates.controller(p.basePackage, name, fs));
         hintMissingDeps(p);
     }
 
