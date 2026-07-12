@@ -34,7 +34,14 @@ public class GenerateCmd implements Callable<Integer> {
     @Option(names = "--tdd", description = "Also generate a JUnit5 test class.")
     boolean tdd;
 
+    @Option(names = "--dry-run", description = "Print what would be generated without writing any file.")
+    boolean dryRun;
+
+    /** Set from --dry-run so the static write() helpers can preview instead of writing. */
+    static boolean DRY = false;
+
     public Integer call() throws Exception {
+        DRY = dryRun;
         var p = ProjectLayout.detect(Paths.get("."));
         if (!"auth".equals(kind == null ? "" : kind.toLowerCase()) && (name == null || name.isBlank())) {
             error("missing <name>. Try: xpresso g " + kind + " <Name>");
@@ -59,7 +66,12 @@ public class GenerateCmd implements Callable<Integer> {
                 genModel(p, entity, fs, true);
                 genService(p, entity);
                 genController(p, entity, fs);
-                if (tdd) { genTest(p, entity); genTest(p, entity + "Service"); genTest(p, entity + "Controller"); }
+                // A full CRUD resource ships with a shared error handler and tests by default.
+                Path advice = p.packageDir("exception").resolve("GlobalExceptionHandler.java");
+                if (!Files.exists(advice)) write(advice, ExtraTemplates.exceptionAdvice(p.basePackage));
+                genTest(p, entity + "Service");
+                genTest(p, entity + "Controller");
+                if (tdd) genTest(p, entity);
             }
             case "auth"       -> genAuth(p);
             case "job"        -> write(p.packageDir("job").resolve((name.endsWith("Job") ? name : name + "Job") + ".java"),
@@ -110,8 +122,10 @@ public class GenerateCmd implements Callable<Integer> {
             Templates.entity(p.basePackage, name, fs));
         write(p.packageDir("repository").resolve(name + "Repository.java"),
             Templates.repository(p.basePackage, name));
-        write(p.packageDir("dto").resolve(name + "Dto.java"),
-            Templates.dto(p.basePackage, name, fs));
+        write(p.packageDir("dto").resolve(name + "Request.java"),
+            Templates.request(p.basePackage, name, fs));
+        write(p.packageDir("dto").resolve(name + "Response.java"),
+            Templates.response(p.basePackage, name, fs));
         if (withMigration) {
             Files.createDirectories(p.migrationsDir);
             String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
@@ -133,8 +147,9 @@ public class GenerateCmd implements Callable<Integer> {
 
     static void genTest(ProjectLayout p, String subject) throws Exception {
         Path testDir = p.root.resolve("src/test/java/" + p.basePackage.replace('.', '/'));
-        Files.createDirectories(testDir);
         Path out = testDir.resolve(subject + "Test.java");
+        if (DRY) { System.out.println("    would create  " + out); return; }
+        Files.createDirectories(testDir);
         if (Files.exists(out)) { updated(out.toString()); return; }
         Files.writeString(out, ExtraTemplates.testClass(p.basePackage, subject));
         created(out.toString());
@@ -209,6 +224,7 @@ public class GenerateCmd implements Callable<Integer> {
     }
 
     private static void write(Path path, String content) throws Exception {
+        if (DRY) { System.out.println("    would create  " + path); return; }
         Files.createDirectories(path.getParent());
         boolean exists = Files.exists(path);
         Files.writeString(path, content);
