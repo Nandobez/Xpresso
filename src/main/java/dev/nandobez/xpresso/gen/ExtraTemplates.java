@@ -1,6 +1,119 @@
 package dev.nandobez.xpresso.gen;
 
+import dev.nandobez.xpresso.core.FieldSpec;
+import java.util.List;
+
 public class ExtraTemplates {
+
+    // ---------------- Seed: factory + dev seeder ----------------
+
+    /** A faker expression for a field, chosen by name heuristics first, then Java type. */
+    static String fakerExpr(FieldSpec f) {
+        String n = f.name().toLowerCase();
+        String byName = switch (n) {
+            case "email"      -> "faker.internet().emailAddress()";
+            case "username"   -> "faker.name().username()";
+            case "name"       -> "faker.name().fullName()";
+            case "firstname"  -> "faker.name().firstName()";
+            case "lastname"   -> "faker.name().lastName()";
+            case "title"      -> "faker.book().title()";
+            case "city"       -> "faker.address().city()";
+            case "country"    -> "faker.address().country()";
+            case "company"    -> "faker.company().name()";
+            case "color"      -> "faker.color().name()";
+            default -> null;
+        };
+        if (byName != null) return byName;
+        if (n.contains("email"))                       return "faker.internet().emailAddress()";
+        if (n.contains("firstname"))                   return "faker.name().firstName()";
+        if (n.contains("lastname"))                    return "faker.name().lastName()";
+        if (n.contains("username"))                    return "faker.name().username()";
+        if (n.endsWith("name"))                        return "faker.name().fullName()";
+        if (n.contains("phone"))                       return "faker.phoneNumber().cellPhone()";
+        if (n.contains("address"))                     return "faker.address().fullAddress()";
+        if (n.contains("url") || n.contains("website") || n.contains("link"))
+                                                       return "faker.internet().url()";
+        if (n.contains("title"))                       return "faker.book().title()";
+        if (n.contains("description") || n.contains("body") || n.contains("content")
+            || n.contains("summary") || n.contains("bio") || n.contains("text") || n.contains("note"))
+                                                       return "faker.lorem().paragraph()";
+        // numeric-by-name (only when the java type is numeric)
+        boolean intType  = f.javaType().equals("Integer") || f.javaType().equals("Long");
+        if (intType && (n.contains("age")))            return "faker.number().numberBetween(18, 80)";
+        if (intType && (n.contains("year")))           return "faker.number().numberBetween(1990, 2024)";
+        if (intType && (n.contains("qty") || n.contains("quantity") || n.contains("stock") || n.contains("count")))
+                                                       return "faker.number().numberBetween(0, 100)";
+        // type fallback
+        return switch (f.javaType()) {
+            case "String"     -> "faker.lorem().word()";
+            case "Integer"    -> "faker.number().numberBetween(1, 1000)";
+            case "Long"       -> "faker.number().randomNumber()";
+            case "BigDecimal" -> "new java.math.BigDecimal(faker.commerce().price())";
+            case "Double"     -> "faker.number().randomDouble(2, 1, 1000)";
+            case "Float"      -> "(float) faker.number().randomDouble(2, 1, 1000)";
+            case "Boolean"    -> "faker.bool().bool()";
+            case "LocalDate"  -> "java.time.LocalDate.now().minusDays(faker.number().numberBetween(0, 3650))";
+            case "Instant"    -> "java.time.Instant.now().minusSeconds(faker.number().numberBetween(0, 31536000))";
+            case "UUID"       -> "java.util.UUID.randomUUID()";
+            default           -> "faker.lorem().word()";
+        };
+    }
+
+    /** Factory that builds one fake entity. Scalar fields only; relations are left for you to wire. */
+    public static String seedFactory(String pkg, String name, List<FieldSpec> fields) {
+        var sb = new StringBuilder();
+        sb.append("package ").append(pkg).append(".dev;\n\n");
+        sb.append("import ").append(pkg).append(".domain.").append(name).append(";\n");
+        sb.append("import net.datafaker.Faker;\n\n");
+        sb.append("/** Builds fake ").append(name).append(" instances for local seeding. Tune the field values as needed. */\n");
+        sb.append("public class ").append(name).append("Factory {\n\n");
+        sb.append("    private static final Faker faker = new Faker();\n\n");
+        sb.append("    public static ").append(name).append(" one() {\n");
+        sb.append("        ").append(name).append(" e = new ").append(name).append("();\n");
+        for (FieldSpec f : fields) {
+            if (f.isRelation()) {
+                sb.append("        // TODO: link ").append(f.name()).append(" (").append(f.kind()).append(") to an existing row\n");
+                continue;
+            }
+            sb.append("        e.set").append(Templates.capitalize(f.name())).append("(").append(fakerExpr(f)).append(");\n");
+        }
+        sb.append("        return e;\n");
+        sb.append("    }\n}\n");
+        return sb.toString();
+    }
+
+    /** Dev-profile CommandLineRunner that seeds N rows on startup when the table is empty. */
+    public static String seeder(String pkg, String name, int count) {
+        return """
+            package %s.dev;
+
+            import %s.domain.%s;
+            import %s.repository.%sRepository;
+            import org.springframework.boot.CommandLineRunner;
+            import org.springframework.context.annotation.Profile;
+            import org.springframework.stereotype.Component;
+
+            /** Seeds %d %s rows at startup under the 'dev' profile, only if the table is empty. */
+            @Component
+            @Profile("dev")
+            public class %sSeeder implements CommandLineRunner {
+
+                private final %sRepository repo;
+
+                public %sSeeder(%sRepository repo) {
+                    this.repo = repo;
+                }
+
+                @Override
+                public void run(String... args) {
+                    if (repo.count() > 0) return;
+                    for (int i = 0; i < %d; i++) repo.save(%sFactory.one());
+                    System.out.println("[seed] inserted %d %s rows");
+                }
+            }
+            """.formatted(pkg, pkg, name, pkg, name, count, name, name, name, name, name, count, name, count, name);
+    }
+
 
     public static String scheduledJob(String pkg, String name) {
         String cls = name.endsWith("Job") ? name : name + "Job";

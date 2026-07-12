@@ -37,6 +37,12 @@ public class GenerateCmd implements Callable<Integer> {
     @Option(names = "--dry-run", description = "Print what would be generated without writing any file.")
     boolean dryRun;
 
+    @Option(names = "--count", defaultValue = "20", description = "For seed: how many rows to insert on dev startup.")
+    int count;
+
+    @Option(names = "--seed", description = "For resource: also generate a dev seed factory + seeder.")
+    boolean withSeed;
+
     /** Set from --dry-run so the static write() helpers can preview instead of writing. */
     static boolean DRY = false;
 
@@ -49,7 +55,7 @@ public class GenerateCmd implements Callable<Integer> {
         }
         // Skip field parsing for kinds that don't take name:type fields.
         boolean wantsFields = switch (kind.toLowerCase()) {
-            case "model", "resource" -> true;
+            case "model", "resource", "seed" -> true;
             default -> false;
         };
         var fs = wantsFields ? parseFields() : java.util.List.<dev.nandobez.xpresso.core.FieldSpec>of();
@@ -72,7 +78,9 @@ public class GenerateCmd implements Callable<Integer> {
                 genTest(p, entity + "Service");
                 genTest(p, entity + "Controller");
                 if (tdd) genTest(p, entity);
+                if (withSeed) genSeed(p, entity, fs, count);
             }
+            case "seed"       -> genSeed(p, entity, fs, count);
             case "auth"       -> genAuth(p);
             case "job"        -> write(p.packageDir("job").resolve((name.endsWith("Job") ? name : name + "Job") + ".java"),
                                        ExtraTemplates.scheduledJob(p.basePackage, name));
@@ -143,6 +151,35 @@ public class GenerateCmd implements Callable<Integer> {
     static void genService(ProjectLayout p, String name) throws Exception {
         write(p.packageDir("service").resolve(name + "Service.java"),
             Templates.service(p.basePackage, name));
+    }
+
+    static void genSeed(ProjectLayout p, String name, List<FieldSpec> fs, int count) throws Exception {
+        write(p.packageDir("dev").resolve(name + "Factory.java"),
+            ExtraTemplates.seedFactory(p.basePackage, name, fs));
+        write(p.packageDir("dev").resolve(name + "Seeder.java"),
+            ExtraTemplates.seeder(p.basePackage, name, count));
+        if (!DRY) {
+            Path pom = p.root.resolve("pom.xml");
+            if (Files.exists(pom) && ensureDatafaker(pom))
+                updated(pom.toString() + "  (datafaker dependency)");
+        }
+        info("run with the 'dev' profile to seed: SPRING_PROFILES_ACTIVE=dev xpresso s");
+    }
+
+    /** Adds the datafaker dependency to the pom if missing. Returns true if changed. */
+    private static boolean ensureDatafaker(Path pom) throws Exception {
+        String xml = Files.readString(pom);
+        if (xml.contains("<artifactId>datafaker</artifactId>")) return false;
+        int idx = xml.lastIndexOf("</dependencies>");
+        if (idx < 0) return false;
+        String dep = ""
+            + "        <dependency>\n"
+            + "            <groupId>net.datafaker</groupId>\n"
+            + "            <artifactId>datafaker</artifactId>\n"
+            + "            <version>2.4.2</version>\n"
+            + "        </dependency>\n    ";
+        Files.writeString(pom, xml.substring(0, idx) + dep + xml.substring(idx));
+        return true;
     }
 
     static void genTest(ProjectLayout p, String subject) throws Exception {

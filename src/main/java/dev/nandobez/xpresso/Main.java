@@ -18,7 +18,7 @@ import static dev.nandobez.xpresso.cmd.Tui.*;
         CleanCmd.class, CompileCmd.class, InstallCmd.class,
         DoctorCmd.class, DepsCmd.class,
         HealthCmd.class, BeansCmd.class, ProfileCmd.class,
-        ConfigCmd.class, WatchCmd.class
+        ConfigCmd.class, WatchCmd.class, ApiCmd.class
     }
 )
 public class Main implements Runnable {
