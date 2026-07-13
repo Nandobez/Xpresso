@@ -108,8 +108,9 @@ public record FieldSpec(
         // validation imports
         for (String f : flags) {
             switch (f) {
+                case "url" -> out.add("import org.hibernate.validator.constraints.URL;");
                 case "notblank","notempty","notnull","size","min","max","email",
-                     "pattern","positive","negative","past","future","url"
+                     "pattern","positive","negative","past","future"
                     -> out.add("import jakarta.validation.constraints.*;");
             }
         }

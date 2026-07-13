@@ -166,10 +166,30 @@ public class GenerateCmd implements Callable<Integer> {
             Templates.response(p.basePackage, name, fs));
         if (withMigration) {
             Files.createDirectories(p.migrationsDir);
-            String ts = nextVersion(p.migrationsDir);
-            Path mig = p.migrationsDir.resolve("V" + ts + "__create_" + Templates.pluralize(Templates.snake(name)) + ".sql");
-            write(mig, Templates.migrationCreate(name, fs));
+            write(migrationFor(p.migrationsDir, "create_" + Templates.pluralize(Templates.snake(name))),
+                Templates.migrationCreate(name, fs));
         }
+    }
+
+    /**
+     * Idempotent, self-healing migration path: reuse the existing V…__<slug>.sql, and if earlier
+     * runs left duplicates for the same table, delete the extras (keeping the earliest version) so
+     * Flyway never chokes. Mints a fresh unique version only when none exists.
+     */
+    private static Path migrationFor(Path dir, String slug) {
+        try (var s = Files.list(dir)) {
+            var matches = s.filter(f -> f.getFileName().toString().matches("V\\d+__" + slug + "\\.sql"))
+                           .sorted().collect(java.util.stream.Collectors.toList());
+            if (!matches.isEmpty()) {
+                Path keep = matches.get(0);
+                for (int i = 1; i < matches.size(); i++) {
+                    try { Files.delete(matches.get(i)); info("removed duplicate migration " + matches.get(i).getFileName()); }
+                    catch (Exception ignore) {}
+                }
+                return keep;
+            }
+        } catch (Exception ignore) {}
+        return dir.resolve("V" + nextVersion(dir) + "__" + slug + ".sql");
     }
 
     static void genController(ProjectLayout p, String name, List<FieldSpec> fs) throws Exception {
@@ -275,8 +295,7 @@ public class GenerateCmd implements Callable<Integer> {
         write(p.packageDir("web").resolve("AuthController.java"), ExtraTemplates.authController(p.basePackage));
         write(p.packageDir("config").resolve("SecurityConfig.java"), ExtraTemplates.securityConfig(p.basePackage));
         Files.createDirectories(p.migrationsDir);
-        String ts = nextVersion(p.migrationsDir);
-        write(p.migrationsDir.resolve("V" + ts + "__create_users.sql"), ExtraTemplates.authMigration());
+        write(migrationFor(p.migrationsDir, "create_users"), ExtraTemplates.authMigration());
     }
 
     static void genMigration(ProjectLayout p, String description) throws Exception {
