@@ -15,7 +15,7 @@ public class CleanCmd implements Callable<Integer> {
     public Integer call() throws Exception {
         var bs = dev.nandobez.xpresso.core.BuildSystem.detect(Paths.get("."));
         banner("xpresso clean", bs.name() + (deep ? " · deep" : ""));
-        int rc = new ProcessBuilder(bs.clean()).inheritIO().start().waitFor();
+        int rc = Mvn.run(bs.clean(), bs.root(), null);
         if (rc != 0) return rc;
         if (deep) {
             Path fe = Paths.get("src/main/frontend");
@@ -29,6 +29,7 @@ public class CleanCmd implements Callable<Integer> {
                 deleteRecursively(stat);
             }
         }
+        System.out.println("    " + GRN + "✓ " + R + "cleaned");
         return 0;
     }
 

@@ -16,6 +16,6 @@ public class BuildCmd implements Callable<Integer> {
     public Integer call() throws Exception {
         var bs = BuildSystem.detect(Paths.get("."));
         banner("xpresso build", bs.name() + (withTests ? " · with tests" : ""));
-        return new ProcessBuilder(bs.build(!withTests)).inheritIO().start().waitFor();
+        return Mvn.run(bs.build(!withTests), bs.root(), "built");
     }
 }

@@ -16,6 +16,6 @@ public class TestCmd implements Callable<Integer> {
     public Integer call() throws Exception {
         var bs = BuildSystem.detect(Paths.get("."));
         banner("xpresso test", bs.name() + (pattern == null ? "" : " · " + pattern));
-        return new ProcessBuilder(bs.test(pattern)).inheritIO().start().waitFor();
+        return Mvn.run(bs.test(pattern), bs.root(), "tests passed");
     }
 }

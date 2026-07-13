@@ -14,7 +14,7 @@ public class CompileCmd implements Callable<Integer> {
         Path root = Paths.get(".").toAbsolutePath();
         var bs = dev.nandobez.xpresso.core.BuildSystem.detect(root);
         banner("xpresso compile", bs.name());
-        int rc = new ProcessBuilder(bs.compile()).inheritIO().start().waitFor();
+        int rc = Mvn.run(bs.compile(), root, null);
         if (rc != 0) return rc;
 
         Path frontend = root.resolve("src/main/frontend");
@@ -25,6 +25,7 @@ public class CompileCmd implements Callable<Integer> {
                 rc = new ProcessBuilder("java", "-jar", maccJar, "codegen").inheritIO().start().waitFor();
             }
         }
+        if (rc == 0) System.out.println("    " + GRN + "✓ " + R + "compiled");
         return rc;
     }
 }

@@ -10,13 +10,22 @@ import static dev.nandobez.xpresso.cmd.Tui.*;
 @Command(name = "profile", description = "Manage Spring profiles (application-<name>.yml).")
 public class ProfileCmd implements Callable<Integer> {
 
-    @Parameters(index = "0", description = "Subcommand: add | list | rm")
+    @Parameters(index = "0", arity = "0..1", description = "Subcommand: add | list | rm")
     String sub;
 
     @Parameters(index = "1", arity = "0..1", description = "Profile name (for add / rm)")
     String name;
 
     public Integer call() throws Exception {
+        if (sub == null) {
+            System.out.println();
+            System.out.println("  " + BLD + "profile" + R + DIM + " — manage Spring profiles (application-<name>.yml)" + R);
+            System.out.println();
+            System.out.println("    " + BLD + "xpresso profile list" + R + DIM + "        show profiles" + R);
+            System.out.println("    " + BLD + "xpresso profile add <name>" + R + DIM + "  create application-<name>.yml" + R);
+            System.out.println("    " + BLD + "xpresso profile rm <name>" + R + DIM + "   delete it" + R);
+            return 2;
+        }
         Path resDir = Paths.get("src/main/resources");
         Files.createDirectories(resDir);
         switch (sub.toLowerCase()) {

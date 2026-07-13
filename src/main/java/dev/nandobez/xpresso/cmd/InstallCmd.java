@@ -20,7 +20,7 @@ public class InstallCmd implements Callable<Integer> {
         Path root = Paths.get(".").toAbsolutePath().normalize();
         var bs = dev.nandobez.xpresso.core.BuildSystem.detect(root);
         banner("xpresso install", bs.name());
-        int rc = run(bs.install(skipTests), root);
+        int rc = Mvn.run(bs.install(skipTests), root, null);
         if (rc != 0) return rc;
 
         // 2. macc install (if frontend dir exists)

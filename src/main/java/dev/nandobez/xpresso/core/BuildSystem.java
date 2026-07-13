@@ -60,7 +60,7 @@ public sealed interface BuildSystem permits BuildSystem.Maven, BuildSystem.Gradl
             return l;
         }
         public List<String> dbTask(String flywayGoal) {
-            return List.of("mvn", "-q", "flyway:" + flywayGoal);
+            return List.of("mvn", "flyway:" + flywayGoal);
         }
     }
 

@@ -58,7 +58,13 @@ public class GenerateCmd implements Callable<Integer> {
             case "model", "resource", "seed" -> true;
             default -> false;
         };
-        var fs = wantsFields ? parseFields() : java.util.List.<dev.nandobez.xpresso.core.FieldSpec>of();
+        List<FieldSpec> fs;
+        try {
+            fs = wantsFields ? parseFields() : java.util.List.of();
+        } catch (IllegalArgumentException e) {
+            error(e.getMessage());
+            return 2;
+        }
         String entity = name == null ? "" : capitalize(name);
 
         banner("xpresso g " + kind, name == null ? "" : name);
@@ -117,12 +123,36 @@ public class GenerateCmd implements Callable<Integer> {
             }
             default -> { error("unknown kind '" + kind + "'. use: model | controller | service | migration | resource | auth | job | event | exception | config | component | test"); return 2; }
         }
+        flush();
         return 0;
+    }
+
+    /** Timestamp version (yyyyMMddHHmmss) bumped past any existing migration so versions never collide. */
+    private static String nextVersion(Path dir) {
+        var used = new java.util.HashSet<Long>();
+        try {
+            Files.list(dir).forEach(f -> {
+                var m = java.util.regex.Pattern.compile("^V(\\d+)__").matcher(f.getFileName().toString());
+                if (m.find()) used.add(Long.parseLong(m.group(1)));
+            });
+        } catch (Exception ignore) {}
+        long v = Long.parseLong(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")));
+        while (used.contains(v)) v++;
+        return String.valueOf(v);
     }
 
     private List<FieldSpec> parseFields() {
         if (fields == null) return List.of();
-        return fields.stream().map(FieldSpec::parse).toList();
+        var out = new java.util.ArrayList<FieldSpec>();
+        for (String f : fields) {
+            try {
+                out.add(FieldSpec.parse(f));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("invalid field '" + f
+                    + "' — expected name:type (e.g. title:string, price:decimal, user:belongs_to)");
+            }
+        }
+        return out;
     }
 
     static void genModel(ProjectLayout p, String name, List<FieldSpec> fs, boolean withMigration) throws Exception {
@@ -136,7 +166,7 @@ public class GenerateCmd implements Callable<Integer> {
             Templates.response(p.basePackage, name, fs));
         if (withMigration) {
             Files.createDirectories(p.migrationsDir);
-            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            String ts = nextVersion(p.migrationsDir);
             Path mig = p.migrationsDir.resolve("V" + ts + "__create_" + Templates.pluralize(Templates.snake(name)) + ".sql");
             write(mig, Templates.migrationCreate(name, fs));
         }
@@ -161,7 +191,7 @@ public class GenerateCmd implements Callable<Integer> {
         if (!DRY) {
             Path pom = p.root.resolve("pom.xml");
             if (Files.exists(pom) && ensureDatafaker(pom))
-                updated(pom.toString() + "  (datafaker dependency)");
+                GEN.computeIfAbsent("pom", k -> new java.util.ArrayList<>()).add("+datafaker");
         }
         info("run with the 'dev' profile to seed: SPRING_PROFILES_ACTIVE=dev xpresso s");
     }
@@ -185,11 +215,11 @@ public class GenerateCmd implements Callable<Integer> {
     static void genTest(ProjectLayout p, String subject) throws Exception {
         Path testDir = p.root.resolve("src/test/java/" + p.basePackage.replace('.', '/'));
         Path out = testDir.resolve(subject + "Test.java");
-        if (DRY) { System.out.println("    would create  " + out); return; }
+        record(out);
+        if (DRY) return;
         Files.createDirectories(testDir);
-        if (Files.exists(out)) { updated(out.toString()); return; }
+        if (Files.exists(out)) return;
         Files.writeString(out, ExtraTemplates.testClass(p.basePackage, subject));
-        created(out.toString());
     }
 
     /** Detect missing validation / openapi deps via jdp doctor result; print hint only. */
@@ -245,13 +275,13 @@ public class GenerateCmd implements Callable<Integer> {
         write(p.packageDir("web").resolve("AuthController.java"), ExtraTemplates.authController(p.basePackage));
         write(p.packageDir("config").resolve("SecurityConfig.java"), ExtraTemplates.securityConfig(p.basePackage));
         Files.createDirectories(p.migrationsDir);
-        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String ts = nextVersion(p.migrationsDir);
         write(p.migrationsDir.resolve("V" + ts + "__create_users.sql"), ExtraTemplates.authMigration());
     }
 
     static void genMigration(ProjectLayout p, String description) throws Exception {
         Files.createDirectories(p.migrationsDir);
-        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String ts = nextVersion(p.migrationsDir);
         Path mig = p.migrationsDir.resolve("V" + ts + "__" + Templates.snake(description) + ".sql");
         write(mig, Templates.migrationEmpty(description));
     }
@@ -261,10 +291,46 @@ public class GenerateCmd implements Callable<Integer> {
     }
 
     private static void write(Path path, String content) throws Exception {
-        if (DRY) { System.out.println("    would create  " + path); return; }
+        record(path);
+        if (DRY) return;
         Files.createDirectories(path.getParent());
-        boolean exists = Files.exists(path);
         Files.writeString(path, content);
-        if (exists) updated(path.toString()); else created(path.toString());
     }
+
+    // ---- grouped generation summary ----
+
+    private static final java.util.Map<String, java.util.List<String>> GEN = new java.util.LinkedHashMap<>();
+    private static final String[] LAYER_ORDER =
+        {"domain", "repository", "dto", "service", "web", "config", "exception", "dev", "job", "event", "migration", "test"};
+
+    /** Record a generated file under its layer (folder), instead of printing a full path per file. */
+    private static void record(Path p) {
+        String s = p.toString().replace('\\', '/');
+        String file = p.getFileName().toString();
+        String name = file.endsWith(".java") ? file.substring(0, file.length() - 5) : file;
+        String layer;
+        if (s.contains("/db/migration/")) { layer = "migration"; name = name.replaceFirst("^V\\d+__", "V…__"); }
+        else if (s.contains("/src/test/")) layer = "test";
+        else { Path par = p.getParent(); layer = par == null ? "misc" : par.getFileName().toString(); }
+        GEN.computeIfAbsent(layer, k -> new java.util.ArrayList<>()).add(name);
+    }
+
+    /** Print the grouped summary (layer → files) and clear. */
+    private void flush() {
+        if (GEN.isEmpty()) return;
+        int w = 0, total = 0;
+        for (var e : GEN.entrySet()) { w = Math.max(w, e.getKey().length()); total += e.getValue().size(); }
+        var seen = new java.util.LinkedHashSet<String>();
+        for (String l : LAYER_ORDER) if (GEN.containsKey(l)) { printLayer(l, w); seen.add(l); }
+        for (String l : GEN.keySet()) if (seen.add(l)) printLayer(l, w);
+        System.out.println();
+        System.out.println("    " + DIM + total + " files" + (DRY ? " · dry-run, nothing written" : "") + R);
+        GEN.clear();
+    }
+
+    private void printLayer(String layer, int w) {
+        System.out.println("    " + DIM + pad(layer, w) + R + "  " + String.join(DIM + " · " + R, GEN.get(layer)));
+    }
+
+    private static String pad(String s, int w) { return s.length() >= w ? s : s + " ".repeat(w - s.length()); }
 }
