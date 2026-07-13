@@ -36,14 +36,15 @@ cd myshop
 
 xpresso g resource Product name:string!notblank{200} price:decimal!positive
 xpresso g model Order user:belongs_to status:enum(NEW,PAID,SHIPPED)      # relations + enums
-xpresso g endpoint Product archive --method POST --path /{id}/archive    # extra controller method
+xpresso g seed Product name:string price:decimal --count 30              # fake data on dev startup
 
-xpresso db migrate                                                       # Flyway
+xpresso db migrate                                                       # Flyway (uses application.yml datasource)
 xpresso routes                                                           # colour-coded
-xpresso routes --diff                                                    # endpoints added/removed since HEAD
 xpresso beans                                                            # list Spring beans
-xpresso health                                                           # curl /actuator/health
 xpresso s                                                                # spring-boot:run
+
+xpresso api GET products                                                 # hit the live API
+xpresso api POST -m products                                             # -m mocks a valid body from OpenAPI
 ```
 
 ## Commands
@@ -62,27 +63,28 @@ PROJECT
   watch                re-compile on every .java change (DevTools-friendly)
 
 INSPECT
-  routes [--diff]      list endpoints (--diff: changes vs HEAD)
+  routes               list endpoints (colour-coded by verb)
   beans [--type X]     list @Service / @Repository / @Controller / @Configuration / @Component
   config               list @ConfigurationProperties + application.yml dump
   health [-u URL]      curl /actuator/health, pretty-print
+  api <METHOD> [-m] <endpoint> [k=v…]
+                       call the running app; -m mocks a valid body from OpenAPI,
+                       --raw dumps colored JSON
 
-GENERATE
-  g model <Name> <fields>      entity + repository + DTO + migration
-  g controller <Name>          REST controller with @Operation + @Valid + @Tag
-  g service <Name>             @Service skeleton
-  g migration <description>    blank Flyway migration (timestamped)
-  g resource <Name> <fields>   model + service + controller (combo)
+GENERATE   (output grouped by layer; --dry-run previews without writing)
+  g model <Name> <fields>      entity + repository + Request/Response DTOs + migration
+  g controller <Name>          DTO-based REST controller (delegates to the service)
+  g service <Name>             @Transactional @Service
+  g migration <description>    blank Flyway migration (unique timestamp)
+  g resource <Name> <fields>   model + service + controller + error handler + tests
+                               [--seed] also emits a dev seed factory + seeder
+  g seed <Name> <fields> [--count N]
+                               editable Faker factory + dev-profile seeder (adds datafaker)
   g endpoint <ctrl> <action>   add method to existing controller
                                --method POST --path /{id}/archive
   g auth                       AppUser + bcrypt + SecurityConfig + migration
-  g job <Name>                 @Scheduled task
-  g event <Name>               ApplicationEvent + @EventListener
-  g exception <Name>           custom exception + @RestControllerAdvice
-  g config <Name>              @Configuration skeleton
-  g component <Name>           @Component skeleton
-  g test <Subject>             JUnit5 test class
-  --tdd                        also generate test class for the generated artifact
+  g job / event / exception / config / component / test
+  --tdd                        also generate a test class for the generated artifact
 
 DATABASE
   db migrate [--to V…]         run Flyway migrate (optional target)
@@ -142,13 +144,14 @@ myshop/
 │   ├── MyshopApplication.java
 │   ├── domain/        → @Entity classes
 │   ├── repository/    → JpaRepository<T, Long>
-│   ├── service/       → @Service classes
-│   ├── web/           → @RestController with @Tag + @Operation
-│   ├── dto/           → records
+│   ├── service/       → @Transactional @Service classes
+│   ├── web/           → @RestController (DTO-based, paged) with @Operation
+│   ├── dto/           → <Name>Request + <Name>Response records
 │   ├── config/        → @Configuration
+│   ├── dev/           → seed factories + dev-profile seeders
 │   ├── job/           → @Scheduled
 │   ├── event/         → ApplicationEvent + Listener
-│   └── exception/     → custom + @RestControllerAdvice
+│   └── exception/     → custom + GlobalExceptionHandler
 ├── src/test/java/...
 └── src/main/resources/
     ├── application.yml
